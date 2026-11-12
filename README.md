@@ -4,6 +4,8 @@ A modular, tested foundation for Unity games. It provides the runtime infrastruc
 
 > **Status:** pre-alpha. The API may change between minor versions until `v1.0`.
 
+> **CURRENTLY THIS IS A DEMO UNITY PROJECT, FUTURE VERSIONS WILL ALLOW FOR UPM IMPORT**
+
 ## Requirements
 
 - Unity **6000.3.20f1**
