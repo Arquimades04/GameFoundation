@@ -1,6 +1,6 @@
 # GameFoundation
 
-A modular, tested foundation for Unity games. It provides the runtime infrastructure every project ends up rebuilding (bootstrap, services, game loop, pause, diagnostics) so game design can start on solid ground.
+A modular, tested foundation for Unity games. It provides the runtime infrastructure so game design can start on solid ground.
 
 > **Status:** pre-alpha. The API may change between minor versions until `v1.0`.
 
@@ -58,9 +58,18 @@ A modular, tested foundation for Unity games. It provides the runtime infrastruc
 4. At each milestone, merge `develop` into `main` with a **merge commit** and tag it.
 5. Rebase on `develop` regularly to limit scene and prefab conflicts.
 
-## Roadmap
+### AI usage
 
-Work is tracked in the GitHub project **GAMEDEV - Pre-alpha Foundation** and the repository milestones and issues.
+The architecture and all C# runtime and test code in this project are written by me. I use AI assistants (GitHub Copilot) as a support tool for:
+
+- **Project management:** roadmap structuring, milestone and issue planning.
+
+- **Code review:** feedback on commits, design and edge cases, which I then evaluate and apply myself.
+
+- **Documentation and repository setup:** outlines, drafts, and configuration files such as `.editorconfig`, `LICENSE` and the base README.
+
+Design decisions and their trade-offs are mine, and I'm responsible for everything that is merged. The objective of this project is to
+learn, improve and enable others to come along with me in this process. 
 
 ## License
 
