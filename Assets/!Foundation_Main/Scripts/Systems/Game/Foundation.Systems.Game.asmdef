@@ -1,0 +1,14 @@
+{
+    "name": "Foundation.Systems.Game",
+    "rootNamespace": "Foundation.Systems.Game",
+    "references": [],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
