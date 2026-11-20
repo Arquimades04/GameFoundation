@@ -21,7 +21,7 @@ env:
 
 jobs:
   test:
-    if: github.actor != 'dependabot[bot]'
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -62,7 +62,7 @@ jobs:
           path: artifacts
 
   build:
-    if: github.actor != 'dependabot[bot]'
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     needs: test
     runs-on: ubuntu-latest
     steps:
