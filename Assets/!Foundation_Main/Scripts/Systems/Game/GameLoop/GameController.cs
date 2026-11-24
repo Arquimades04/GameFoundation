@@ -59,9 +59,10 @@ namespace Foundation.Systems.Game
 
         private PauseController pauseController;
         private DebugController debugController;
+        private EventBus eventBus;
         private bool initialized;
         private bool shutdown;
-        public void Initialize(PauseController pause, DebugController debug)
+        public void Initialize(PauseController pause, DebugController debug, EventBus eBus)
         {
             if (initialized) throw new InvalidOperationException("GameController is already initialized.");
 
@@ -69,9 +70,13 @@ namespace Foundation.Systems.Game
                 throw new ArgumentNullException(nameof(debug));
             if (pause == null)
                 throw new ArgumentNullException(nameof(pause));
+            if (eBus == null)
+                throw new ArgumentNullException(nameof(eBus));
+
 
             pauseController = pause;
             debugController = debug;
+            eventBus = eBus;
             initialized = true;
 
             SetLoopsEnabled(true);
@@ -108,6 +113,7 @@ namespace Foundation.Systems.Game
 
             if (!this.executionEnabled) return;
 
+            eventBus.DispatchQueued();
             this.ExecuteUpdate();
         }
         /// <summary>

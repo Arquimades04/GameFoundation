@@ -26,11 +26,14 @@ namespace Foundation.Systems.Game
                 var debug = gameObject.AddComponent<DebugController>();
                 StartService(debug, debug.Initialize);
 
+                var eventBus = new EventBus();
+                StartService<IEventBus>(eventBus, () => eventBus.Initialize(debug));
+
                 var pause = gameObject.AddComponent<PauseController>();
                 StartService(pause, () => pause.Initialize(debug));
 
                 var game = gameObject.AddComponent<GameController>();
-                StartService(game, () => game.Initialize(pause, debug));
+                StartService(game, () => game.Initialize(pause, debug, eventBus));
                 services.Register<IBehaviourScheduler>(game);
 
                 var performance = gameObject.AddComponent<PerformanceTracker>();
