@@ -17,6 +17,7 @@ namespace Foundation.Systems.Game
         private interface IEventChannel
         {
             void Clear();
+            void DispatchQueued();
         }
 
         private sealed class EventChannel<T> : IEventChannel where T : struct
@@ -35,6 +36,7 @@ namespace Foundation.Systems.Game
 
             private readonly List<Action<T>> handlers = new List<Action<T>>();
             private readonly List<Mutation> pending = new List<Mutation>();
+            private readonly Queue<T> queuedEvents = new Queue<T>();
             private DebugController debugController;
             private int depth;
 
@@ -90,6 +92,13 @@ namespace Foundation.Systems.Game
                 }
             }
 
+            public void Enqueue(T EventData) => queuedEvents.Enqueue(EventData);
+
+            public void DispatchQueued()
+            {
+                while (queuedEvents.Count > 0) Publish(queuedEvents.Dequeue());
+            }
+
             private void ApplyPending()
             {
                 for (int i = 0; i < pending.Count; i++)
@@ -109,10 +118,13 @@ namespace Foundation.Systems.Game
             }
         }
 
+
+
         /// <summary>
         /// Stores the event channels for different event types.
         /// </summary>
         private readonly Dictionary<Type, IEventChannel> eventChannels = new Dictionary<Type, IEventChannel>();
+        private readonly List<IEventChannel> channelOrder = new List<IEventChannel>();
         #endregion
 
         #region SERVICE MANAGEMENT IMPLEMENTATION
@@ -168,6 +180,23 @@ namespace Foundation.Systems.Game
 
             GetOrCreateChannel<T>().Publish(eventData);
         }
+
+        public void PublishQueued<T>(T eventData) where T : struct
+        {
+            if (!initialized) return;
+
+            GetOrCreateChannel<T>().Enqueue(eventData);
+        }
+
+        public void DispatchQueued()
+        {
+            if (!initialized) return;
+
+            int count = channelOrder.Count;
+            for (int i = 0; i < count; i++)
+                channelOrder[i].DispatchQueued();
+        }
+
         #endregion
 
         #region PRIVATE METHODS
@@ -179,6 +208,7 @@ namespace Foundation.Systems.Game
 
             EventChannel<T> newChannel = new EventChannel<T>(debugController);
             eventChannels.Add(typeof(T), newChannel);
+            channelOrder.Add(newChannel);
             return newChannel;
         }
         #endregion
@@ -193,6 +223,8 @@ namespace Foundation.Systems.Game
         void Subscribe<T>(System.Action<T> handler) where T : struct;
         void Unsubscribe<T>(System.Action<T> handler) where T : struct;
         void Publish<T>(T eventData) where T : struct;
+        void PublishQueued<T>(T eventData) where T : struct;
+        void DispatchQueued();
     }
     #endregion
 }
