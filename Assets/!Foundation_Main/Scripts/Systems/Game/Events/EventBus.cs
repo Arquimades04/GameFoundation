@@ -95,8 +95,14 @@ namespace Foundation.Systems.Game
                 for (int i = 0; i < pending.Count; i++)
                 {
                     Mutation m = pending[i];
-                    if (m.Add) if (!handlers.Contains(m.Handler)) handlers.Add(m.Handler);
-                    else handlers.Remove(m.Handler);
+                    if (m.Add)
+                    {
+                        if (!handlers.Contains(m.Handler)) handlers.Add(m.Handler);
+                    }
+                    else
+                    {
+                        handlers.Remove(m.Handler);
+                    }
                 }
 
                 pending.Clear();
