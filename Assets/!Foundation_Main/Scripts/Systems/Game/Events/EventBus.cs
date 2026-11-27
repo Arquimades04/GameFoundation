@@ -4,7 +4,6 @@ using System;
 
 namespace Foundation.Systems.Game
 {
-
     public class EventBus : IEventBus
     {
         #region PUBLIC PROPERTIES
@@ -12,127 +11,29 @@ namespace Foundation.Systems.Game
 
         #region PRIVATE PROPERTIES
         /// <summary>
-        /// Represents a channel for a specific type of event, allowing for subscription and publication of events.
+        /// Stores the event channels for type-based events.
         /// </summary>
-        private interface IEventChannel
-        {
-            void Clear();
-            void DispatchQueued();
-        }
-
-        private sealed class EventChannel<T> : IEventChannel where T : struct
-        {
-            private readonly struct Mutation
-            {
-                public readonly Action<T> Handler;
-                public readonly bool Add;
-
-                public Mutation(Action<T> handler, bool add)
-                {
-                    Handler = handler;
-                    Add = add;
-                }
-            }
-
-            private readonly List<Action<T>> handlers = new List<Action<T>>();
-            private readonly List<Mutation> pending = new List<Mutation>();
-            private readonly Queue<T> queuedEvents = new Queue<T>();
-            private DebugController debugController;
-            private int depth;
-
-            public EventChannel(DebugController debug)
-            {
-                debugController = debug;
-            }
-
-            public void Clear()
-            {
-                handlers.Clear();
-                pending.Clear();
-                depth = 0;
-            }
-
-            public void Subscribe(Action<T> handler)
-            {
-                if (handler == null) return;
-                if (depth > 0) pending.Add(new Mutation(handler, true));
-                else if (!handlers.Contains(handler)) handlers.Add(handler);
-            }
-
-            public void Unsubscribe(Action<T> handler)
-            {
-                if (handler == null) return;
-                if (depth > 0) pending.Add(new Mutation(handler, false));
-                else handlers.Remove(handler);
-            }
-
-            public void Publish(T evt)
-            {
-                depth++;
-                try
-                {
-                    for (int i = 0; i < handlers.Count; i++)
-                    {
-                        Action<T> handler = handlers[i];
-
-                        try
-                        {
-                            handler(evt);
-                        }
-                        catch (Exception ex)
-                        {
-                            debugController?.Log(DebugController.DebugCategory.General, DebugController.DebugPersistence.RuntimeOnly, $"Subscriber '{handler.Method.Name}' failed for {typeof(T).Name}: {ex}", "EventBus");
-                        }
-                    }
-                }
-                finally
-                {
-                    depth--;
-                    if (depth == 0 && pending.Count > 0) ApplyPending();
-                }
-            }
-
-            public void Enqueue(T EventData) => queuedEvents.Enqueue(EventData);
-
-            public void DispatchQueued()
-            {
-                while (queuedEvents.Count > 0) Publish(queuedEvents.Dequeue());
-            }
-
-            private void ApplyPending()
-            {
-                for (int i = 0; i < pending.Count; i++)
-                {
-                    Mutation m = pending[i];
-                    if (m.Add)
-                    {
-                        if (!handlers.Contains(m.Handler)) handlers.Add(m.Handler);
-                    }
-                    else
-                    {
-                        handlers.Remove(m.Handler);
-                    }
-                }
-
-                pending.Clear();
-            }
-        }
-
-
+        private readonly Dictionary<Type, IEventChannel> typeEventChannel = new Dictionary<Type, IEventChannel>();
 
         /// <summary>
-        /// Stores the event channels for different event types.
+        /// Stores the event channels for asset-based events.
         /// </summary>
-        private readonly Dictionary<Type, IEventChannel> eventChannels = new Dictionary<Type, IEventChannel>();
+        private readonly Dictionary<AssetEventChannelKey, IEventChannel> assetEventChannels = new Dictionary<AssetEventChannelKey, IEventChannel>();
+
+        /// <summary>
+        /// Maintains the order of event channels for dispatching.
+        /// </summary>
         private readonly List<IEventChannel> channelOrder = new List<IEventChannel>();
         #endregion
 
         #region SERVICE MANAGEMENT IMPLEMENTATION
         private DebugController debugController;
         private bool initialized;
+
+
         public void Initialize(DebugController debug)
         {
-            if (initialized) throw new InvalidOperationException("EventBus is already initialized.");
+            if (initialized) return;
 
             debugController = debug;
             initialized = true;
@@ -146,8 +47,11 @@ namespace Foundation.Systems.Game
 
             initialized = false;
 
-            foreach (var channel in eventChannels.Values) channel.Clear();
-            eventChannels.Clear();
+            foreach (var channel in channelOrder) channel.Clear();
+
+            typeEventChannel.Clear();
+            assetEventChannels.Clear();
+            channelOrder.Clear();
 
             debugController?.Log(DebugController.DebugCategory.General, DebugController.DebugPersistence.RuntimeOnly, "EventBus Shutdown", "EventBus");
             debugController = null;
@@ -155,25 +59,84 @@ namespace Foundation.Systems.Game
         #endregion
 
         #region PUBLIC METHODS
+
+        /// <summary>
+        /// Subscribes to a type-based event.
+        /// </summary>
         public void Subscribe<T>(Action<T> handler) where T : struct
         {
             if (!initialized) return;
 
-            if (handler == null) Debug.LogError("EventBus: Attempted to subscribe with a null handler.");
+            if (handler == null)
+            {
+                Debug.LogError("EventBus: Attempted to subscribe with a null handler.");
+                return;
+            }
 
             GetOrCreateChannel<T>().Subscribe(handler);
-
         }
 
+        /// <summary>
+        /// Subscribes to an asset-based event channel.
+        /// </summary>
+        public void Subscribe<T>(AssetEventChannel<T> channel, Action<T> handler) where T : struct
+        {
+            if (!initialized) return;
+
+            if (channel == null)
+            {
+                Debug.LogError("EventBus: Attempted to subscribe to a null channel.");
+                return;
+            }
+            if (handler == null)
+            {
+                Debug.LogError("EventBus: Attempted to subscribe with a null handler.");
+                return;
+            }
+
+            GetOrCreateChannel<T>(channel).Subscribe(handler);
+        }
+
+        /// <summary>
+        /// Unsubscribes from a type-based event.
+        /// </summary>
         public void Unsubscribe<T>(Action<T> handler) where T : struct
         {
             if (!initialized) return;
 
-            if (handler == null) Debug.LogError("EventBus: Attempted to unsubscribe with a null handler.");
+            if (handler == null)
+            {
+                Debug.LogError("EventBus: Attempted to unsubscribe with a null handler.");
+                return;
+            }
 
             GetOrCreateChannel<T>().Unsubscribe(handler);
         }
 
+        /// <summary>
+        /// Unsubscribes from an asset-based event channel.
+        /// </summary>
+        public void Unsubscribe<T>(AssetEventChannel<T> channel, Action<T> handler) where T : struct
+        {
+            if (!initialized) return;
+
+            if (channel == null)
+            {
+                Debug.LogError("EventBus: Attempted to unsubscribe from a null channel.");
+                return;
+            }
+            if (handler == null)
+            {
+                Debug.LogError("EventBus: Attempted to unsubscribe with a null handler.");
+                return;
+            }
+
+            GetOrCreateChannel<T>(channel).Unsubscribe(handler);
+        }
+
+        /// <summary>
+        /// Publishes a type-based event immediately.
+        /// </summary>
         public void Publish<T>(T eventData) where T : struct
         {
             if (!initialized) return;
@@ -181,6 +144,25 @@ namespace Foundation.Systems.Game
             GetOrCreateChannel<T>().Publish(eventData);
         }
 
+        /// <summary>
+        /// Publishes an asset-based event channel immediately.
+        /// </summary>
+        public void Publish<T>(AssetEventChannel<T> channel, T eventData) where T : struct
+        {
+            if (!initialized) return;
+
+            if (channel == null)
+            {
+                Debug.LogError("EventBus: Attempted to publish to a null channel.");
+                return;
+            }
+
+            GetOrCreateChannel<T>(channel).Publish(eventData);
+        }
+
+        /// <summary>
+        /// Publishes a type-based event to the queue.
+        /// </summary>
         public void PublishQueued<T>(T eventData) where T : struct
         {
             if (!initialized) return;
@@ -188,6 +170,25 @@ namespace Foundation.Systems.Game
             GetOrCreateChannel<T>().Enqueue(eventData);
         }
 
+        /// <summary>
+        /// Publishes an asset-based event channel to the queue.
+        /// </summary>
+        public void PublishQueued<T>(AssetEventChannel<T> channel, T eventData) where T : struct
+        {
+            if (!initialized) return;
+
+            if (channel == null)
+            {
+                Debug.LogError("EventBus: Attempted to enqueue to a null channel.");
+                return;
+            }
+
+            GetOrCreateChannel<T>(channel).Enqueue(eventData);
+        }
+
+        /// <summary>
+        /// Dispatches all queued events for all channels.
+        /// </summary>
         public void DispatchQueued()
         {
             if (!initialized) return;
@@ -197,17 +198,38 @@ namespace Foundation.Systems.Game
                 channelOrder[i].DispatchQueued();
         }
 
+        /// <summary>
+        /// Raises an error for a specific channel.
+        /// </summary>
+        public void RaiseChannelError(string channel, string message)
+        {
+            if (!initialized) return;
+
+            debugController?.Log(DebugController.DebugCategory.General, DebugController.DebugPersistence.RuntimeOnly, $"Channel {channel} Error: {message}", "EventBus");
+        }
+
         #endregion
 
         #region PRIVATE METHODS
-        private EventChannel<T> GetOrCreateChannel<T>() where T : struct
+        private TypeEventChannel<T> GetOrCreateChannel<T>() where T : struct
         {
-            IEventChannel targetChannel;
+            if (typeEventChannel.TryGetValue(typeof(T), out IEventChannel targetChannel)) return (TypeEventChannel<T>)targetChannel;
 
-            if (eventChannels.TryGetValue(typeof(T), out targetChannel)) return (EventChannel<T>)targetChannel;
+            var newChannel = new TypeEventChannel<T>(typeof(T).Name);
 
-            EventChannel<T> newChannel = new EventChannel<T>(debugController);
-            eventChannels.Add(typeof(T), newChannel);
+            typeEventChannel.Add(typeof(T), newChannel);
+            channelOrder.Add(newChannel);
+            return newChannel;
+        }
+
+        private TypeEventChannel<T> GetOrCreateChannel<T>(AssetEventChannel<T> assetChannel) where T : struct
+        {
+            var key = new AssetEventChannelKey(assetChannel, typeof(T));
+
+            if (assetEventChannels.TryGetValue(key, out IEventChannel targetChannel)) return (TypeEventChannel<T>)targetChannel;
+
+            TypeEventChannel<T> newChannel = new TypeEventChannel<T>(assetChannel.name);
+            assetEventChannels.Add(key, newChannel);
             channelOrder.Add(newChannel);
             return newChannel;
         }
@@ -220,10 +242,18 @@ namespace Foundation.Systems.Game
     /// </summary>
     public interface IEventBus : IGameService
     {
-        void Subscribe<T>(System.Action<T> handler) where T : struct;
-        void Unsubscribe<T>(System.Action<T> handler) where T : struct;
+        void Subscribe<T>(Action<T> handler) where T : struct;
+        void Unsubscribe<T>(Action<T> handler) where T : struct;
         void Publish<T>(T eventData) where T : struct;
         void PublishQueued<T>(T eventData) where T : struct;
+
+
+        void Subscribe<T>(AssetEventChannel<T> channel, Action<T> handler) where T : struct;
+        void Unsubscribe<T>(AssetEventChannel<T> channel, Action<T> handler) where T : struct;
+        void Publish<T>(AssetEventChannel<T> channel, T eventData) where T : struct;
+        void PublishQueued<T>(AssetEventChannel<T> channel, T eventData) where T : struct;
+
+        void RaiseChannelError(string channel, string message);
         void DispatchQueued();
     }
     #endregion
