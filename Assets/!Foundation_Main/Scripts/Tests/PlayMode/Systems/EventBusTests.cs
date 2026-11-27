@@ -37,6 +37,43 @@ public sealed class EventBusProbe : ControlledBehaviour
     }
 }
 
+public sealed class PingChannel : AssetEventChannel<Ping>
+{
+}
+
+public sealed class AssetEventBusListenerProbe : ControlledBehaviour
+{
+    public bool ResolvedBus;
+    public int ReceivedValue { get; private set; }
+
+    private AssetEventChannel<Ping> channel;
+    private IEventBus eventBus;
+    public void Configure(IEventBus bus, AssetEventChannel<Ping> eventChannel)
+    {
+        eventBus = bus;
+        channel = eventChannel;
+    }
+
+    protected override void OnEnable()
+    {
+        if (eventBus == null || channel == null) return;
+
+        eventBus.Subscribe(channel, HandlePing);
+
+    }
+    protected override void OnDisable()
+    {
+        if (eventBus == null || channel == null) return;
+
+        eventBus.Unsubscribe(channel, HandlePing);
+    }
+
+    private void HandlePing(Ping evt)
+    {
+        ReceivedValue = evt.Value;
+    }
+}
+
 public sealed class EventBusRegistrationProbe : ControlledBehaviour
 {
     public bool ResolvedBus;
@@ -141,5 +178,53 @@ public class EventBusTests
         Assert.AreEqual(42, probe.ReceivedValue);
 
         GameObject.Destroy(probe.gameObject);
+    }
+
+    [UnityTest]
+    public IEnumerator AssetChannelListener_ReceivesOnlyWhileEnabled()
+    {
+        // GameEntryPoint's BeforeSceneLoad initializer should have created the host.
+        Assert.That(GameEntryPoint.TryResolve<IEventBus>(out var eventBus), Is.True, "GameEntryPoint failed to resolve IEventBus");
+
+        // Create a new channel and listener for the test.
+        var channel = ScriptableObject.CreateInstance<PingChannel>();
+        var listenerObject = new GameObject("AssetEventBusListenerProbe");
+
+        // Initially disable the listener object to test that it only receives events while active.
+        listenerObject.SetActive(false);
+
+        // Add the listener component to the listener object and configure it with the event bus and channel.
+        var listener = listenerObject.AddComponent<AssetEventBusListenerProbe>();
+        listener.Configure(eventBus, channel);
+
+        try
+        {
+            // Enable the listener object and publish an event to verify it receives events while active.
+            listenerObject.SetActive(true);
+            eventBus.Publish(channel, new Ping { Value = 10 });
+            Assert.AreEqual(10, listener.ReceivedValue);
+
+            // Disable the listener component and publish an event to verify it does not receive events while disabled.
+            listener.enabled = false;
+            eventBus.Publish(channel, new Ping { Value = 20 });
+            Assert.AreEqual(10, listener.ReceivedValue);
+
+            // Re-enable the listener component and publish an event to verify it receives events again.
+            listener.enabled = true;
+            eventBus.Publish(channel, new Ping { Value = 30 });
+            Assert.AreEqual(30, listener.ReceivedValue);
+
+            // Disable the listener object and publish an event to verify it does not receive events while inactive.
+            listenerObject.SetActive(false);
+            eventBus.Publish(channel, new Ping { Value = 40 });
+            Assert.AreEqual(30, listener.ReceivedValue);
+
+            yield return null;
+        }
+        finally
+        {
+            GameObject.Destroy(listenerObject);
+            ScriptableObject.Destroy(channel);
+        }
     }
 }
